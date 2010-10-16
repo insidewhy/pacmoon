@@ -27,6 +27,11 @@ die() {
     exit 1
 }
 
+error() {
+    echo " $fg_bold[red]*$fg_no_bold[default] $*"
+    [[ $+keep_going = 1 ]] || exit 1
+}
+
 verbose() {
     if [[ $+verbose = 1 ]] ; then
         echo " $fg_bold[cyan]*$fg_no_bold[default] $*"
@@ -52,7 +57,23 @@ compile_and_install() {
     else
         verbose "installing $name from $repo"
         local arch=$(package-query -Sif %a $repo/$name)
-        rsync -aP "$ABS_RSYNC/$arch/$repo/$name/" .
+        if ! rsync -aP "$ABS_RSYNC/$arch/$repo/$name/" . ; then
+            # TODO: fallback
+            error "rsync connection died"
+            return 1
+        fi
+
+        typeset -a deps
+        deps=( $(bash -c 'source PKGBUILD && echo ${makedepends[@]}') )
+
+        if [[ $#deps > 0 ]] ; then
+            verbose "begin dependencies of $name"
+            for dep in $deps ; do
+                build_pkg $dep
+            done
+            verbose "end dependencies of $name"
+        fi
+
         makepkg -i --noconfirm || die "could not build $name from $repo"
 
         # record the date the package was installed
@@ -63,27 +84,42 @@ compile_and_install() {
 
 build_pkg() {
     local name=$1
-    local pkgData="$(package-query -Qif %1,%s $name)"
-    [[ -z $pkgData ]] && die "could not find package $name"
 
     # don't check the same package twice
     [[ $+installed[$name] = 0 ]] || return
     installed[$name]=1
 
-    if [ -f $configBase/pkg/$name ] ; then
-        local installedDate=${pkgData%,*}
-        if [[ $installedDate -le $(cat $configBase/pkg/$name) ]] ; then
+    typeset -a pkgData
+    pkgData=( $(package-query -Sf "%1 %s %n" --query-type provides $name || \
+                package-query -Sif "%1 %s %n" $name) )
+
+    if [[ -z $pkgData ]] ; then
+        # TODO: file might be in aur
+        error "could not find package $name"
+        return 1
+    fi
+
+    if [[ $name != $pkgData[3] ]] ; then
+        name=$pkgData[3]
+        [[ $+installed[$name] = 0 ]] || return
+        installed[$name]=1
+    fi
+
+    if [[ $pkgData[1] = - ]] ; then
+        verbose "new package $name"
+    elif [ -f $configBase/pkg/$name ] ; then
+        if [[ $pkgData[1] -le $(cat $configBase/pkg/$name) ]] ; then
             verbose "package $name up to date and compiled"
             return
         else
             verbose "package $name was replaced by binary"
         fi
     else
-        verbose "package $name has never been compiled"
+        verbose "package $name installed but never compiled"
     fi
 
     pushd_new "$configBase/tmp/$name"
-    compile_and_install $name ${pkgData#*,}
+    compile_and_install $name $pkgData[2]
     popd
 }
 
