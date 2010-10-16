@@ -6,7 +6,7 @@ setopt warnCreateGlobal extendedGlob noFunctionArgZero
 PACMOON_VERSION=0.1
 AUR_BASE=http://aur.archlinux.org/packages
 ABS_RSYNC=rsync.archlinux.org::abs
-RSYNC_ARGS=(-mrtv --no-motd --delete-after --no-p --no-o --no-g)
+RSYNC_ARGS=(-mrtv --no-motd --no-p --no-o --no-g)
 
 autoload jgetopt colors
 colors
