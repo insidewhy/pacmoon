@@ -11,6 +11,9 @@ autoload jgetopt colors
 colors
 
 configBase="$XDG_CONFIG_HOME/pacmoon"
+mkdir -p $configBase/pkg || die "could not mkdir $configBase/pkg"
+
+typeset -A installed
 
 list_uncompiled() {
 }
@@ -51,11 +54,10 @@ compile_and_install() {
         local arch=$(package-query -Sif %a $repo/$name)
         rsync -aP "$ABS_RSYNC/$arch/$repo/$name/" .
         makepkg -i --noconfirm || die "could not build $name from $repo"
-        mkdir -p $configBase/pkg || die "could not mkdir $configBase/pkg"
 
         # record the date the package was installed
-        package-query -Qif %1 $name > $configBase/pkg/$name
-        [[ -z $temp ]] && rm -rf $configBase/pkg
+        package-query -Qif %1 $name > "$configBase/pkg/$name"
+        [[ -z $temp ]] && rm -rf "$configBase/tmp/$name"
     fi
 }
 
@@ -64,10 +66,14 @@ build_pkg() {
     local pkgData="$(package-query -Qif %1,%s $name)"
     [[ -z $pkgData ]] && die "could not find package $name"
 
+    # don't check the same package twice
+    [[ $+installed[$name] = 0 ]] || return
+    installed[$name]=1
+
     if [ -f $configBase/pkg/$name ] ; then
         local installedDate=${pkgData%,*}
         if [[ $installedDate -le $(cat $configBase/pkg/$name) ]] ; then
-            verbose "package $name already compiled"
+            verbose "package $name up to date and compiled"
             return
         else
             verbose "package $name was replaced by binary"
@@ -89,6 +95,7 @@ build_all() {
     local logPath=$(pacman_output_field -v Log)
 
     if [[ -f "$configBase/last_update" ]] ; then
+        :
     else
         warn "last update time not found, checking all files manually"
 
