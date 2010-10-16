@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 
 emulate zsh
-setopt warnCreateGlobal extendedGlob noFunctionArgZero
+setopt warnCreateGlobal extendedGlob noFunctionArgZero nullGlob
 
 PACMOON_VERSION=0.5
 AUR_BASE=http://aur.archlinux.org/packages
@@ -78,19 +78,22 @@ typeset -a install_list
 
 build_pkg() {
     local name=$1
+    local as_dep=$2
+
     pushd "$pmoonHome/tmp/$name" || \
         die "could not cd to $pmoonHome/tmp/$name"
     rm -rf src
 
     typeset -a mkpkg_args
-    mkpkg_args=(-i -f --noconfirm)
+    mkpkg_args=(-f)
     if [[ $+split_pkgs[$name] -eq 1 ]] ; then
         # fullname only set for split packages
         mkpkg_args=($mkpkg_args --pkg "$split_pkgs[$name]")
     fi
 
-    log_info "build package $name ($mkpkg_args)"
+    log_info "build ${as_dep:+dependency }package $name ($mkpkg_args)"
 
+    rm -f *.pkg.tar.*
     if [[ $+quiet -eq 1 ]] ; then
         makepkg &>/dev/null $mkpkg_args
     else
@@ -98,6 +101,9 @@ build_pkg() {
     fi
 
     [[ $? -eq 0 ]] || die "could not build $name from $repo"
+
+    as_root pacman --noconfirm -U ${as_dep:+--asdeps} *.pkg.tar.* || \
+        die "could not install package"
 
     # record the date the package was dep_status
     package-query -Qif %1 $name > "$pmoonHome/pkg/$name"
@@ -108,11 +114,12 @@ build_pkg() {
 collect_deps() {
     local name=$1
     local repo=$2
+    local is_dep=$3
 
     if [[ $repo = local ]] ; then
-        verbose "dependency $name from AUR"
+        verbose "adding package $name from AUR to install list"
     else
-        verbose "dependency $name from $repo"
+        verbose "adding package $name from $repo to install list"
 
         local basename=$(grep -A1 '%BASE%' \
                ${dbPath}/sync/$repo/$name-[0-9]*/desc | tail -n 1)
@@ -120,6 +127,7 @@ collect_deps() {
         if [[ -n $basename && $basename != $name ]] ; then
             if [[ $+split_pkgs[$basename] -eq 1 ]] ; then
                 split_pkgs[$basename]+=" $name"
+                return
             else
                 split_pkgs[$basename]=$name
             fi
@@ -136,17 +144,17 @@ collect_deps() {
         fi
 
         typeset -a deps
-        deps=( $(bash -c 'source PKGBUILD && echo ${makedepends[@]}') )
+        deps=( $(bash -c 'source /etc/makepkg.conf; source PKGBUILD && echo ${makedepends[@]}') )
 
         if [[ $#deps > 0 ]] ; then
             verbose "begin dependencies of $name"
             for dep in $deps ; do
-                collect_pkg $dep
+                collect_pkg $dep 1
             done
             verbose "end dependencies of $name"
         fi
 
-        install_list+=$basename
+        install_list+=$basename:$is_dep
         popd
     fi
 }
@@ -157,6 +165,7 @@ as_root() {
 
 collect_pkg() {
     local name=$1
+    local is_dep=$2
 
     # don't check the same package twice
     if [[ $+dep_status[$name] -eq 1 ]] ; then
@@ -200,7 +209,7 @@ collect_pkg() {
     fi
 
     dep_status[$name]=2
-    collect_deps $name $pkgData[2]
+    collect_deps $name $pkgData[2] $is_dep
     dep_status[$name]=1
 }
 
@@ -209,7 +218,12 @@ build_collected() {
         log_info "nothing to install"
         return 0
     elif [[ $+ask -eq 1 ]] ; then
-        echo -n "installing $install_list [yN]? "
+        echo "installing: "
+        for pkg in $install_list ; do
+            local as_dep=${pkg#*:}
+            info ${pkg%:*} ${as_dep:+"(dependency)"}
+        done
+        echo -n "Continue installing [yN]? "
         read ans
         if [[ $ans != Y && $ans != y ]] ; then
             exit 1
@@ -217,7 +231,7 @@ build_collected() {
     fi
 
     for pkg in $install_list ; do
-        build_pkg $pkg
+        build_pkg ${pkg%:*} ${pkg#*:}
     done
 }
 
