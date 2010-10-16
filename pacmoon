@@ -4,6 +4,8 @@ emulate zsh
 setopt warnCreateGlobal extendedGlob noFunctionArgZero
 
 PACMOON_VERSION=0.1
+AUR_BASE=http://aur.archlinux.org/packages
+ABS_RSYNC=rsync.archlinux.org::abs
 
 autoload jgetopt colors
 colors
@@ -29,7 +31,7 @@ verbose() {
 }
 
 pushd_new() {
-    rm -rf $1
+    [[ -z $keep_tmp ]] && rm -rf $1
     mkdir -p $1
     pushd $1
 }
@@ -38,17 +40,35 @@ pacman_output_field() {
     pacman 2>/dev/null ${(s: :)1} | grep "^$2" | sed 's/.*: //'
 }
 
-build_pkg() {
-    pkg=$1
-    local buildDate="$(package-query -Qif %1 $pkg)"
-    [[ -z $buildDate ]] && die "could not find package $pkg"
+compile_and_install() {
+    local name=$1
+    local repo=$2
 
-    if [ -f "$configBase/pkg/date" ] ; then
-        :
+    if [[ $repo = local ]] ; then
+        verbose "installing $name from AUR"
     else
-        verbose "package $pkg has never been compiled"
-        pushd_new "$configBase/tmp/$pkg"
-        # TODO: compile
+        verbose "installing $name from $repo"
+        local arch=$(package-query -Sif %a $repo/$name)
+        rsync -aP "$ABS_RSYNC/$arch/$repo/$name/" .
+        makepkg -i || die "could not build $name from $repo"
+        mkdir -p $configBase/pkg || die "could not mkdir $configBase/pkg"
+
+        # record the date the package was installed
+        package-query -Qif %1 $name > $configBase/pkg/$name
+    fi
+}
+
+build_pkg() {
+    local name=$1
+    local pkgData="$(package-query -Qif %1,%s $name)"
+    [[ -z $pkgData ]] && die "could not find package $name"
+
+    if [ -f $configBase/pkg/$name ] ; then
+        local installedDate=${pkgData%,*}
+    else
+        verbose "package $name has never been compiled"
+        pushd_new "$configBase/tmp/$name"
+        compile_and_install $name ${pkgData#*,}
         popd
     fi
 }
@@ -76,6 +96,7 @@ main() {
         keep-going,k   "do not stop on error" \
         pretend,p      "only print what would be done" \
         uncompiled,u   "list packages which have not been custom compiled" \
+        temp,T         "keep temporary files" \
         -- $*
 
     if [[ $+uncompiled = 1 ]] ; then
