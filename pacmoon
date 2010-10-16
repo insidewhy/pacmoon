@@ -1,0 +1,92 @@
+#!/usr/bin/env zsh
+
+emulate zsh
+setopt warnCreateGlobal extendedGlob noFunctionArgZero
+
+PACMOON_VERSION=0.1
+
+autoload jgetopt colors
+colors
+
+configBase="$XDG_CONFIG_HOME/pacmoon"
+
+list_uncompiled() {
+}
+
+warn() {
+    echo " $fg_bold[yellow]*$fg_no_bold[default] $*"
+}
+
+die() {
+    echo " $fg_bold[red]*$fg_no_bold[default] $*"
+    exit 1
+}
+
+verbose() {
+    if [[ $+verbose = 1 ]] ; then
+        echo " $fg_bold[cyan]*$fg_no_bold[default] $*"
+    fi
+}
+
+pushd_new() {
+    rm -rf $1
+    mkdir -p $1
+    pushd $1
+}
+
+pacman_output_field() {
+    pacman 2>/dev/null ${(s: :)1} | grep "^$2" | sed 's/.*: //'
+}
+
+build_pkg() {
+    pkg=$1
+    local buildDate="$(pacman_output_field "-Qi $pkg" Build)"
+    if [[ -z $buildDate ]] ; then
+        die "could not find package $pkg"
+    fi
+    buildDate=$(date +%s -d "$buildDate")
+
+    if [ -f "$configBase/pkg/date" ] ; then
+        :
+    else
+        verbose "package $pkg has never been compiled"
+        pushd_new "$configBase/tmp/$pkg"
+        echo "i am now in $PWD"
+        popd
+        rm -rf "$configBase/tmp/$pkg"
+    fi
+}
+
+build_pkgs() {
+    for pkg in $* ; do build_pkg $pkg ; done
+}
+
+build_all() {
+    local logPath=$(pacman_output_field -v Log)
+
+    if [[ -f "$configBase/last_update" ]] ; then
+    else
+        warn "last update time not found, checking all files manually"
+
+        for pkg in $(pacman -Qq) ; do
+            build_pkg $pkg
+        done
+    fi
+}
+
+main() {
+    jgetopt $0 "$PACMOON_VERSION (please enjoy your evening)" \
+        verbose,v      "increase verbosity" \
+        uncompiled,u   "list packages which have not been custom compiled" \
+        -- $*
+
+    if [[ $+uncompiled = 1 ]] ; then
+        list_uncompiled
+    elif [[ $#positionals > 0 ]] ; then
+        build_pkgs $positionals
+    else
+        build_all
+    fi
+}
+
+main $*
