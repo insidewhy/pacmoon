@@ -17,9 +17,6 @@ mkdir -p $pmoonHome/pkg || die "could not mkdir $pmoonHome/pkg"
 
 typeset -A installed
 
-list_uncompiled() {
-}
-
 info() {
     echo " $fg_bold[green]*$fg_no_bold[default] $*"
 }
@@ -51,6 +48,19 @@ verbose() {
         echo " $fg_bold[cyan]*$fg_no_bold[default] $*"
     fi
 }
+
+list_uncompiled() {
+    error "listing uncompiled packages not supported yet"
+}
+
+list_compiled() {
+    error "listing compiled packages not supported yet"
+}
+
+list_pkgs() {
+    error "listing packages not supported yet"
+}
+
 
 cd_build_dir() {
     local buld_dir="$pmoonHome/tmp/$1"
@@ -195,16 +205,22 @@ build_all() {
 
 main() {
     jgetopt $0 "$PACMOON_VERSION (please enjoy your evening)" \
-        verbose,v      "increase verbosity" \
-        keep-going,k   "do not stop on error" \
         pretend,p      "only print what would be done" \
-        uncompiled,u   "list packages which have not been custom compiled" \
+        keep-going,k   "do not stop on error" \
+        verbose,v      "increase verbosity" \
         quiet,q        "hide output of compilation" \
         temp,T         "keep temporary files" \
+        uncompiled,u   "list packages which have not been custom compiled" \
+        compiled,c     "list packages which have been custom compiled" \
+        list,l         "list installed packages with their compilation status" \
         -- $*
 
     if [[ $+uncompiled -eq 1 ]] ; then
         list_uncompiled
+    elif [[ $+compiled -eq 1 ]] ; then
+        list_compiled
+    elif [[ $+list -eq 1 ]] ; then
+        list_pkgs
     elif [[ $#positionals > 0 ]] ; then
         build_pkgs $positionals
     else
