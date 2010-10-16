@@ -6,6 +6,7 @@ setopt warnCreateGlobal extendedGlob noFunctionArgZero
 PACMOON_VERSION=0.1
 AUR_BASE=http://aur.archlinux.org/packages
 ABS_RSYNC=rsync.archlinux.org::abs
+RSYNC_ARGS=(-mrtv --no-motd --delete-after --no-p --no-o --no-g)
 
 autoload jgetopt colors
 colors
@@ -39,7 +40,6 @@ verbose() {
 }
 
 pushd_new() {
-    [[ -z $temp ]] && rm -rf $1
     mkdir -p $1
     pushd $1
 }
@@ -47,6 +47,8 @@ pushd_new() {
 pacman_output_field() {
     pacman 2>/dev/null ${(s: :)1} | grep "^$2" | sed 's/.*: //'
 }
+
+dbPath=$(pacman_output_field -v DB)
 
 compile_and_install() {
     local name=$1
@@ -57,8 +59,11 @@ compile_and_install() {
     else
         verbose "installing $name from $repo"
         local arch=$(package-query -Sif %a $repo/$name)
-        if ! rsync -aP "$ABS_RSYNC/$arch/$repo/$name/" . ; then
+        if ! rsync &>/dev/null $RSYNC_ARGS "$ABS_RSYNC/$arch/$repo/$name/" . ; then
+            # TODO: file might be split
+
             # TODO: fallback
+
             error "rsync connection died"
             return 1
         fi
@@ -90,7 +95,7 @@ build_pkg() {
     installed[$name]=1
 
     typeset -a pkgData
-    pkgData=( $(package-query -Sf "%1 %s %n" --query-type provides $name || \
+    pkgData=( $(package-query -Qf "%1 %s %n" --query-type provides $name || \
                 package-query -Sif "%1 %s %n" $name) )
 
     if [[ -z $pkgData ]] ; then
