@@ -3,7 +3,7 @@
 emulate zsh
 setopt warnCreateGlobal extendedGlob noFunctionArgZero
 
-PACMOON_VERSION=0.1
+PACMOON_VERSION=0.5
 AUR_BASE=http://aur.archlinux.org/packages
 ABS_RSYNC=rsync.archlinux.org::abs
 RSYNC_ARGS=(-mrtv --no-motd --no-p --no-o --no-g)
@@ -52,9 +52,10 @@ verbose() {
     fi
 }
 
-pushd_new() {
-    mkdir -p $1
-    pushd $1
+cd_build_dir() {
+    local buld_dir="$pmoonHome/tmp/$1"
+    mkdir -p $buld_dir
+    cd $buld_dir
 }
 
 pacman_output_field() {
@@ -80,6 +81,8 @@ compile_and_install() {
             name=$split_name
             split_name=$tmp
         fi
+
+        cd_build_dir $name
 
         local arch=$(package-query -Sif %a $repo/$name)
         if ! rsync &>/dev/null $RSYNC_ARGS "$ABS_RSYNC/$arch/$repo/$name/" .
@@ -166,11 +169,9 @@ build_pkg() {
         log_info "package $name installed but never compiled"
     fi
 
-    pushd_new "$pmoonHome/tmp/$name"
     installed[$name]=2
     compile_and_install $name $pkgData[2]
     installed[$name]=1
-    popd
 }
 
 build_pkgs() {
@@ -181,6 +182,7 @@ build_all() {
     local logPath=$(pacman_output_field -v Log)
 
     if [[ -f "$pmoonHome/last_update" ]] ; then
+        # TODO: use log to get list of candidates to compile
         :
     else
         warn "last update time not found, checking all files manually"
