@@ -19,6 +19,10 @@ typeset -A installed
 list_uncompiled() {
 }
 
+info() {
+    echo " $fg_bold[green]*$fg_no_bold[default] $*"
+}
+
 warn() {
     echo " $fg_bold[yellow]*$fg_no_bold[default] $*"
 }
@@ -30,11 +34,11 @@ die() {
 
 error() {
     echo " $fg_bold[red]*$fg_no_bold[default] $*"
-    [[ $+keep_going = 1 ]] || exit 1
+    [[ $+keep_going -eq 1 ]] || exit 1
 }
 
 verbose() {
-    if [[ $+verbose = 1 ]] ; then
+    if [[ $+verbose -eq 1 ]] ; then
         echo " $fg_bold[cyan]*$fg_no_bold[default] $*"
     fi
 }
@@ -58,14 +62,20 @@ compile_and_install() {
         verbose "installing $name from AUR"
     else
         verbose "installing $name from $repo"
+
+        local split_name=$(grep -A1 '%BASE%' \
+               ${dbPath}/sync/$repo/$name-[0-9]*/desc | tail -n 1)
+
+        if [[ -n $split_name ]] ; then
+            local tmp=$name
+            name=$split_name
+            split_name=$tmp
+        fi
+
         local arch=$(package-query -Sif %a $repo/$name)
-        if ! rsync &>/dev/null $RSYNC_ARGS "$ABS_RSYNC/$arch/$repo/$name/" . ; then
-            # TODO: file might be split
-
-            # TODO: fallback
-
-            error "rsync connection died"
-            return 1
+        if ! rsync &>/dev/null $RSYNC_ARGS "$ABS_RSYNC/$arch/$repo/$name/" .
+        then
+            die "rsync connection died"
         fi
 
         typeset -a deps
@@ -79,7 +89,14 @@ compile_and_install() {
             verbose "end dependencies of $name"
         fi
 
-        makepkg -i --noconfirm || die "could not build $name from $repo"
+        if [[ $+quiet -eq 1 ]] ; then
+            makepkg &>/dev/null ${split_pkg:+--pkg $split_pkg} -i --noconfirm
+        else
+            echo makepkg ${split_pkg:+--pkg $split_pkg} -i --noconfirm
+            makepkg ${split_pkg:+--pkg $split_pkg} -i --noconfirm
+        fi
+
+        [[ $? -eq 0 ]] || die "could not build $name from $repo"
 
         # record the date the package was installed
         package-query -Qif %1 $name > "$configBase/pkg/$name"
@@ -91,7 +108,7 @@ build_pkg() {
     local name=$1
 
     # don't check the same package twice
-    [[ $+installed[$name] = 0 ]] || return
+    [[ $+installed[$name] -eq 0 ]] || return
     installed[$name]=1
 
     typeset -a pkgData
@@ -106,21 +123,21 @@ build_pkg() {
 
     if [[ $name != $pkgData[3] ]] ; then
         name=$pkgData[3]
-        [[ $+installed[$name] = 0 ]] || return
+        [[ $+installed[$name] -eq 0 ]] || return
         installed[$name]=1
     fi
 
     if [[ $pkgData[1] = - ]] ; then
-        verbose "new package $name"
+        info "new package $name"
     elif [ -f $configBase/pkg/$name ] ; then
         if [[ $pkgData[1] -le $(cat $configBase/pkg/$name) ]] ; then
-            verbose "package $name up to date and compiled"
+            info "package $name up to date and compiled"
             return
         else
-            verbose "package $name was replaced by binary"
+            info "package $name was replaced by binary"
         fi
     else
-        verbose "package $name installed but never compiled"
+        info "package $name installed but never compiled"
     fi
 
     pushd_new "$configBase/tmp/$name"
@@ -152,10 +169,11 @@ main() {
         keep-going,k   "do not stop on error" \
         pretend,p      "only print what would be done" \
         uncompiled,u   "list packages which have not been custom compiled" \
+        quiet,q        "hide output of compilation" \
         temp,T         "keep temporary files" \
         -- $*
 
-    if [[ $+uncompiled = 1 ]] ; then
+    if [[ $+uncompiled -eq 1 ]] ; then
         list_uncompiled
     elif [[ $#positionals > 0 ]] ; then
         build_pkgs $positionals
