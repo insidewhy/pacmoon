@@ -205,10 +205,13 @@ collect_pkg() {
 }
 
 build_collected() {
-    if [[ $+ask -eq 1 ]] ; then
-        echo "installing $install_list"
+    if [[ $#install_list -eq 0 ]] ; then
+        log_info "nothing to install"
+        return 0
+    elif [[ $+ask -eq 1 ]] ; then
+        echo -n "installing $install_list [yN]? "
         read ans
-        if [[ $ans = N || $ans = n ]] ; then
+        if [[ $ans != Y && $ans != y ]] ; then
             exit 1
         fi
     fi
