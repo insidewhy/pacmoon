@@ -31,7 +31,7 @@ verbose() {
 }
 
 pushd_new() {
-    [[ -z $keep_tmp ]] && rm -rf $1
+    [[ -z $temp ]] && rm -rf $1
     mkdir -p $1
     pushd $1
 }
@@ -55,6 +55,7 @@ compile_and_install() {
 
         # record the date the package was installed
         package-query -Qif %1 $name > $configBase/pkg/$name
+        [[ -z $temp ]] && rm -rf $configBase/pkg
     fi
 }
 
@@ -65,12 +66,19 @@ build_pkg() {
 
     if [ -f $configBase/pkg/$name ] ; then
         local installedDate=${pkgData%,*}
+        if [[ $installedDate -le $(cat $configBase/pkg/$name) ]] ; then
+            verbose "package $name already compiled"
+            return
+        else
+            verbose "package $name was replaced by binary"
+        fi
     else
         verbose "package $name has never been compiled"
-        pushd_new "$configBase/tmp/$name"
-        compile_and_install $name ${pkgData#*,}
-        popd
     fi
+
+    pushd_new "$configBase/tmp/$name"
+    compile_and_install $name ${pkgData#*,}
+    popd
 }
 
 build_pkgs() {
