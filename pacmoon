@@ -91,8 +91,8 @@ compile_and_install() {
 
         typeset -a mkpkg_args
         mkpkg_args=(-i --noconfirm)
-        if [[ $+split_pkg -eq 1 ]] ; then
-            mkpkg_args=($mkpkg_args --pkg $split_pkg)
+        if [[ $+split_name -eq 1 ]] ; then
+            mkpkg_args=($mkpkg_args --pkg $split_name)
         fi
 
         if [[ $+quiet -eq 1 ]] ; then
