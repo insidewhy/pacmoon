@@ -40,20 +40,16 @@ pacman_output_field() {
 
 build_pkg() {
     pkg=$1
-    local buildDate="$(pacman_output_field "-Qi $pkg" Build)"
-    if [[ -z $buildDate ]] ; then
-        die "could not find package $pkg"
-    fi
-    buildDate=$(date +%s -d "$buildDate")
+    local buildDate="$(package-query -Qif %1 $pkg)"
+    [[ -z $buildDate ]] && die "could not find package $pkg"
 
     if [ -f "$configBase/pkg/date" ] ; then
         :
     else
         verbose "package $pkg has never been compiled"
         pushd_new "$configBase/tmp/$pkg"
-        echo "i am now in $PWD"
+        # TODO: compile
         popd
-        rm -rf "$configBase/tmp/$pkg"
     fi
 }
 
@@ -77,6 +73,8 @@ build_all() {
 main() {
     jgetopt $0 "$PACMOON_VERSION (please enjoy your evening)" \
         verbose,v      "increase verbosity" \
+        keep-going,k   "do not stop on error" \
+        pretend,p      "only print what would be done" \
         uncompiled,u   "list packages which have not been custom compiled" \
         -- $*
 
