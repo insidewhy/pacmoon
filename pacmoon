@@ -62,7 +62,7 @@ list_pkgs() {
 }
 
 
-cd_build_dir() {
+pushd_build_dir() {
     local buld_dir="$pmoonHome/tmp/$1"
     mkdir -p $buld_dir
     cd $buld_dir
@@ -83,19 +83,21 @@ compile_and_install() {
     else
         verbose "installing $name from $repo"
 
-        local split_name=$(grep -A1 '%BASE%' \
+        local basename
+        local fullname=$(grep -A1 '%BASE%' \
                ${dbPath}/sync/$repo/$name-[0-9]*/desc | tail -n 1)
 
-        if [[ -n $split_name ]] ; then
-            local tmp=$name
-            name=$split_name
-            split_name=$tmp
+        if [[ -n $fullname && $fullname != $name ]] ; then
+            basename=$fullname
+            fullname=$name
+        else
+            basename=$name
         fi
 
-        cd_build_dir $name
+        pushd_build_dir $basename
 
-        local arch=$(package-query -Sif %a $repo/$name)
-        if ! rsync &>/dev/null $RSYNC_ARGS "$ABS_RSYNC/$arch/$repo/$name/" .
+        local arch=$(package-query -Sif %a $repo/$basename)
+        if ! rsync &>/dev/null $RSYNC_ARGS "$ABS_RSYNC/$arch/$repo/$basename/" .
         then
             die "rsync connection died"
         fi
@@ -113,8 +115,9 @@ compile_and_install() {
 
         typeset -a mkpkg_args
         mkpkg_args=(-i --noconfirm)
-        if [[ $+split_name -eq 1 ]] ; then
-            mkpkg_args=($mkpkg_args --pkg $split_name)
+        if [[ $+fullname -eq 1 ]] ; then
+            # fullname only set for split packages
+            mkpkg_args=($mkpkg_args --pkg $fullname)
         fi
 
         if [[ $+quiet -eq 1 ]] ; then
@@ -127,6 +130,7 @@ compile_and_install() {
 
         # record the date the package was installed
         package-query -Qif %1 $name > "$pmoonHome/pkg/$name"
+        popd
         [[ -z $temp ]] && rm -rf "$pmoonHome/tmp/$name"
     fi
 }
