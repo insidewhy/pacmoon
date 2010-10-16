@@ -15,7 +15,7 @@ pmoonHome="$XDG_CONFIG_HOME/pacmoon"
 logFile="$pmoonHome/log"
 mkdir -p $pmoonHome/pkg || die "could not mkdir $pmoonHome/pkg"
 
-typeset -A installed
+typeset -A dep_status
 
 info() {
     echo " $fg_bold[green]*$fg_no_bold[default] $*"
@@ -63,9 +63,9 @@ list_pkgs() {
 
 
 pushd_build_dir() {
-    local buld_dir="$pmoonHome/tmp/$1"
-    mkdir -p $buld_dir
-    pushd $buld_dir
+    local build_dir="$pmoonHome/tmp/$1"
+    mkdir -p $build_dir
+    pushd $build_dir
 }
 
 pacman_output_field() {
@@ -73,23 +73,56 @@ pacman_output_field() {
 }
 
 dbPath=$(pacman_output_field -v DB)
+typeset -A split_pkgs
+typeset -a install_list
 
-compile_and_install() {
+build_pkg() {
+    local name=$1
+    pushd "$pmoonHome/tmp/$name" || \
+        die "could not cd to $pmoonHome/tmp/$name"
+    rm -rf src
+
+    typeset -a mkpkg_args
+    mkpkg_args=(-i -f --noconfirm)
+    if [[ $+split_pkgs[$name] -eq 1 ]] ; then
+        # fullname only set for split packages
+        mkpkg_args=($mkpkg_args --pkg "$split_pkgs[$name]")
+    fi
+
+    log_info "build package $name ($mkpkg_args)"
+
+    if [[ $+quiet -eq 1 ]] ; then
+        makepkg &>/dev/null $mkpkg_args
+    else
+        makepkg $mkpkg_args
+    fi
+
+    [[ $? -eq 0 ]] || die "could not build $name from $repo"
+
+    # record the date the package was dep_status
+    package-query -Qif %1 $name > "$pmoonHome/pkg/$name"
+    [[ $+keep_temp = 0 ]] && rm -rf "$pmoonHome/tmp/$name"
+    popd
+}
+
+collect_deps() {
     local name=$1
     local repo=$2
 
     if [[ $repo = local ]] ; then
-        verbose "installing $name from AUR"
+        verbose "dependency $name from AUR"
     else
-        verbose "installing $name from $repo"
+        verbose "dependency $name from $repo"
 
-        local basename
-        local fullname=$(grep -A1 '%BASE%' \
+        local basename=$(grep -A1 '%BASE%' \
                ${dbPath}/sync/$repo/$name-[0-9]*/desc | tail -n 1)
 
-        if [[ -n $fullname && $fullname != $name ]] ; then
-            basename=$fullname
-            fullname=$name
+        if [[ -n $basename && $basename != $name ]] ; then
+            if [[ $+split_pkgs[$basename] -eq 1 ]] ; then
+                split_pkgs[$basename]+=" $name"
+            else
+                split_pkgs[$basename]=$name
+            fi
         else
             basename=$name
         fi
@@ -108,32 +141,13 @@ compile_and_install() {
         if [[ $#deps > 0 ]] ; then
             verbose "begin dependencies of $name"
             for dep in $deps ; do
-                build_pkg $dep
+                collect_pkg $dep
             done
             verbose "end dependencies of $name"
         fi
 
-        typeset -a mkpkg_args
-        mkpkg_args=(-i --noconfirm)
-        if [[ -n $fullname ]] ; then
-            # fullname only set for split packages
-            mkpkg_args=($mkpkg_args --pkg $fullname)
-        fi
-
-        if [[ $+quiet -eq 1 ]] ; then
-            verbose "makepkg $mkpkg_args"
-            makepkg &>/dev/null $mkpkg_args
-        else
-            verbose "makepkg $mkpkg_args"
-            makepkg $mkpkg_args
-        fi
-
-        [[ $? -eq 0 ]] || die "could not build $name from $repo"
-
-        # record the date the package was installed
-        package-query -Qif %1 $name > "$pmoonHome/pkg/$name"
+        install_list+=$basename
         popd
-        [[ -z $temp ]] && rm -rf "$pmoonHome/tmp/$name"
     fi
 }
 
@@ -141,20 +155,20 @@ as_root() {
     if [[ $UID -eq 0 ]] ; then $* ; else sudo $* ; fi
 }
 
-build_pkg() {
+collect_pkg() {
     local name=$1
 
     # don't check the same package twice
-    if [[ $+installed[$name] -eq 1 ]] ; then
-        if [[ $installed[$name] -eq 2 ]] ; then
+    if [[ $+dep_status[$name] -eq 1 ]] ; then
+        if [[ $dep_status[$name] -eq 2 ]] ; then
             log_info "installing binary package $name due to dependency cycle"
             as_root pacman --needed --noconfirm -S $name || die \
                 "could not get binary package for recursive dependency $name"
-            installed[$name]=1
+            dep_status[$name]=1
         fi
         return 0
     fi
-    installed[$name]=1
+    dep_status[$name]=1
 
     typeset -a pkgData
     pkgData=( $(package-query -Qf "%1 %s %n" --query-type provides $name || \
@@ -168,33 +182,47 @@ build_pkg() {
 
     if [[ $name != $pkgData[3] ]] ; then
         name=$pkgData[3]
-        [[ $+installed[$name] -eq 0 ]] || return
-        installed[$name]=1
+        [[ $+dep_status[$name] -eq 0 ]] || return
+        dep_status[$name]=1
     fi
 
     if [[ $pkgData[1] = - ]] ; then
-        log_info "new package $name"
+        verbose "new package $name"
     elif [ -f $pmoonHome/pkg/$name ] ; then
         if [[ $pkgData[1] -le $(cat $pmoonHome/pkg/$name) ]] ; then
-            info "package $name up to date and compiled"
+            verbose "package $name up to date and compiled"
             return
         else
-            log_info "package $name was replaced by binary"
+            verbose "package $name was replaced by binary"
         fi
     else
-        log_info "package $name installed but never compiled"
+        verbose "package $name installed but never compiled"
     fi
 
-    installed[$name]=2
-    compile_and_install $name $pkgData[2]
-    installed[$name]=1
+    dep_status[$name]=2
+    collect_deps $name $pkgData[2]
+    dep_status[$name]=1
 }
 
-build_pkgs() {
-    for pkg in $* ; do build_pkg $pkg ; done
+build_collected() {
+    if [[ $+ask -eq 1 ]] ; then
+        echo "installing $install_list"
+        read ans
+        if [[ $ans = N || $ans = n ]] ; then
+            exit 1
+        fi
+    fi
+
+    for pkg in $install_list ; do
+        build_pkg $pkg
+    done
 }
 
-build_all() {
+collect_pkgs() {
+    for pkg in $* ; do collect_pkg $pkg ; done
+}
+
+collect_all() {
     local logPath=$(pacman_output_field -v Log)
 
     if [[ -f "$pmoonHome/last_update" ]] ; then
@@ -204,18 +232,19 @@ build_all() {
         warn "last update time not found, checking all installed packages"
 
         for pkg in $(pacman -Qq) ; do
-            build_pkg $pkg
+            collect_pkg $pkg
         done
     fi
 }
 
 main() {
     jgetopt $0 "$PACMOON_VERSION (please enjoy your evening)" \
+        ask,a          "ask for confirmation before compiling" \
         pretend,p      "only print what would be done" \
         keep-going,k   "do not stop on error" \
         verbose,v      "increase verbosity" \
         quiet,q        "hide output of compilation" \
-        temp,T         "keep temporary files" \
+        keep-temp,T    "keep temporary files" \
         uncompiled,u   "list packages which have not been custom compiled" \
         compiled,c     "list packages which have been custom compiled" \
         list,l         "list installed packages with their compilation status" \
@@ -228,9 +257,11 @@ main() {
     elif [[ $+list -eq 1 ]] ; then
         list_pkgs
     elif [[ $#positionals > 0 ]] ; then
-        build_pkgs $positionals
+        collect_pkgs $positionals
+        build_collected
     else
-        build_all
+        collect_all
+        build_collected
     fi
 }
 
