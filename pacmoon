@@ -89,11 +89,16 @@ compile_and_install() {
             verbose "end dependencies of $name"
         fi
 
+        typeset -a mkpkg_args
+        mkpkg_args=(-i --noconfirm)
+        if [[ $+split_pkg -eq 1 ]] ; then
+            mkpkg_args=($mkpkg_args --pkg $split_pkg)
+        fi
+
         if [[ $+quiet -eq 1 ]] ; then
-            makepkg &>/dev/null ${split_pkg:+--pkg $split_pkg} -i --noconfirm
+            makepkg &>/dev/null $mkpkg_args
         else
-            echo makepkg ${split_pkg:+--pkg $split_pkg} -i --noconfirm
-            makepkg ${split_pkg:+--pkg $split_pkg} -i --noconfirm
+            makepkg $mkpkg_args
         fi
 
         [[ $? -eq 0 ]] || die "could not build $name from $repo"
