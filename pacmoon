@@ -50,7 +50,7 @@ compile_and_install() {
         verbose "installing $name from $repo"
         local arch=$(package-query -Sif %a $repo/$name)
         rsync -aP "$ABS_RSYNC/$arch/$repo/$name/" .
-        makepkg -i || die "could not build $name from $repo"
+        makepkg -i --noconfirm || die "could not build $name from $repo"
         mkdir -p $configBase/pkg || die "could not mkdir $configBase/pkg"
 
         # record the date the package was installed
