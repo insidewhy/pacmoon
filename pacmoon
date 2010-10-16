@@ -11,8 +11,9 @@ RSYNC_ARGS=(-mrtv --no-motd --delete-after --no-p --no-o --no-g)
 autoload jgetopt colors
 colors
 
-configBase="$XDG_CONFIG_HOME/pacmoon"
-mkdir -p $configBase/pkg || die "could not mkdir $configBase/pkg"
+pmoonHome="$XDG_CONFIG_HOME/pacmoon"
+logFile="$pmoonHome/log"
+mkdir -p $pmoonHome/pkg || die "could not mkdir $pmoonHome/pkg"
 
 typeset -A installed
 
@@ -23,17 +24,25 @@ info() {
     echo " $fg_bold[green]*$fg_no_bold[default] $*"
 }
 
+log_info() {
+    info $*
+    echo info: $* >> $logFile
+}
+
 warn() {
     echo " $fg_bold[yellow]*$fg_no_bold[default] $*"
+    echo warn: $* >> $logFile
 }
 
 die() {
     echo " $fg_bold[red]*$fg_no_bold[default] $*"
+    echo fatal: $* >> $logFile
     exit 1
 }
 
 error() {
     echo " $fg_bold[red]*$fg_no_bold[default] $*"
+    echo error: $* >> $logFile
     [[ $+keep_going -eq 1 ]] || exit 1
 }
 
@@ -104,16 +113,28 @@ compile_and_install() {
         [[ $? -eq 0 ]] || die "could not build $name from $repo"
 
         # record the date the package was installed
-        package-query -Qif %1 $name > "$configBase/pkg/$name"
-        [[ -z $temp ]] && rm -rf "$configBase/tmp/$name"
+        package-query -Qif %1 $name > "$pmoonHome/pkg/$name"
+        [[ -z $temp ]] && rm -rf "$pmoonHome/tmp/$name"
     fi
+}
+
+as_root() {
+    if [[ $UID -eq 0 ]] ; then $* ; else sudo $* ; fi
 }
 
 build_pkg() {
     local name=$1
 
     # don't check the same package twice
-    [[ $+installed[$name] -eq 0 ]] || return
+    if [[ $+installed[$name] -eq 1 ]] ; then
+        if [[ $installed[$name] -eq 2 ]] ; then
+            log_info "installing binary package $name due to dependency cycle"
+            as_root pacman --needed --noconfirm -S $name || die \
+                "could not get binary package for recursive dependency $name"
+            installed[$name]=1
+        fi
+        return 0
+    fi
     installed[$name]=1
 
     typeset -a pkgData
@@ -133,20 +154,22 @@ build_pkg() {
     fi
 
     if [[ $pkgData[1] = - ]] ; then
-        info "new package $name"
-    elif [ -f $configBase/pkg/$name ] ; then
-        if [[ $pkgData[1] -le $(cat $configBase/pkg/$name) ]] ; then
+        log_info "new package $name"
+    elif [ -f $pmoonHome/pkg/$name ] ; then
+        if [[ $pkgData[1] -le $(cat $pmoonHome/pkg/$name) ]] ; then
             info "package $name up to date and compiled"
             return
         else
-            info "package $name was replaced by binary"
+            log_info "package $name was replaced by binary"
         fi
     else
-        info "package $name installed but never compiled"
+        log_info "package $name installed but never compiled"
     fi
 
-    pushd_new "$configBase/tmp/$name"
+    pushd_new "$pmoonHome/tmp/$name"
+    installed[$name]=2
     compile_and_install $name $pkgData[2]
+    installed[$name]=1
     popd
 }
 
@@ -157,7 +180,7 @@ build_pkgs() {
 build_all() {
     local logPath=$(pacman_output_field -v Log)
 
-    if [[ -f "$configBase/last_update" ]] ; then
+    if [[ -f "$pmoonHome/last_update" ]] ; then
         :
     else
         warn "last update time not found, checking all files manually"
