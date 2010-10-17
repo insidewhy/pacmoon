@@ -154,7 +154,7 @@ collect_deps() {
             verbose "end dependencies of $name"
         fi
 
-        install_list+=($basename $is_dep)
+        install_list+=($basename "$is_dep")
         popd
     fi
 }
@@ -217,11 +217,13 @@ build_collected() {
     if [[ $#install_list -eq 0 ]] ; then
         log_info "nothing to install"
         return 0
-    elif [[ $+ask -eq 1 ]] ; then
-        echo "installing: "
-        for pkg isdep in $install_list ; do
-            info $pkg ${isdep:+"(dependency)"}
-        done
+    fi
+
+    for pkg isdep in "${(@)install_list}" ; do
+        info $pkg ${isdep:+"(dependency)"}
+    done
+
+    if [[ $+ask -eq 1 ]] ; then
         echo -n "Continue installing [yN]? "
         read ans
         if [[ $ans != Y && $ans != y ]] ; then
@@ -229,13 +231,9 @@ build_collected() {
         fi
     fi
 
-    for pkg isdep in $install_list ; do
+    for pkg isdep in "${(@)install_list}" ; do
         build_pkg $pkg $isdep
     done
-}
-
-collect_pkgs() {
-    for pkg in $* ; do collect_pkg $pkg ; done
 }
 
 collect_all() {
@@ -247,9 +245,18 @@ collect_all() {
     else
         warn "last update time not found, checking all installed packages"
 
+        # TODO: only get requested
         for pkg in $(pacman -Qq) ; do
             collect_pkg $pkg
         done
+    fi
+}
+
+collect_pkgs() {
+    if [[ $# = 0 ]] ; then
+        collect_all
+    else
+        for pkg in $* ; do collect_pkg $pkg; done
     fi
 }
 
@@ -272,11 +279,9 @@ main() {
         list_compiled
     elif [[ $+list -eq 1 ]] ; then
         list_pkgs
-    elif [[ $#positionals > 0 ]] ; then
-        collect_pkgs $positionals
-        build_collected
     else
-        collect_all
+        info "please wait, collecting packages to build"
+        collect_pkgs $positionals
         build_collected
     fi
 }
