@@ -5,6 +5,7 @@ setopt warnCreateGlobal extendedGlob noFunctionArgZero nullGlob
 
 PACMOON_VERSION=0.6
 AUR_BASE=http://aur.archlinux.org/packages
+ABS_DIR=/var/abs
 ABS_RSYNC=rsync.archlinux.org::abs
 RSYNC_ARGS=(-mrtv --no-motd --no-p --no-o --no-g)
 
@@ -117,7 +118,7 @@ collect_deps() {
     local is_dep=$3
 
     if [[ $repo = local ]] ; then
-        warn "not supported: adding package $name from AUR to install list"
+        warn "unsupported: AUR package $name"
     else
         verbose "adding package $name from $repo to install list"
 
@@ -138,10 +139,16 @@ collect_deps() {
         pushd_build_dir $basename
 
         local arch=$(package-query -Sif %a $repo/$basename)
-        if ! rsync &>/dev/null $RSYNC_ARGS "$ABS_RSYNC/$arch/$repo/$basename/" .
-        then
-            die "rsync connection died"
+        local use_abs=0
+        if [[ $+no_abs -eq 0 ]] ; then
+            cp -r $ABS_DIR/$repo/$basename/* . && use_abs=1
         fi
+
+        if [[ $use_abs -eq 0 ]] ; then
+            rsync &>/dev/null $RSYNC_ARGS "$ABS_RSYNC/$arch/$repo/$basename/" .
+            [[ $? -ne 0 ]] && \
+                die "rsync connection died, could not retrieve $basename"
+       fi
 
         typeset -a deps
         deps=( $(bash -c 'source /etc/makepkg.conf; source PKGBUILD && echo ${makedepends[@]}') )
@@ -279,10 +286,18 @@ main() {
         verbose,v      "increase verbosity" \
         quiet,q        "hide output of compilation" \
         keep-temp,T    "keep temporary files" \
+        no-abs,A       "do not use local abs mirror (slower)" \
         uncompiled,u   "list packages which have not been custom compiled" \
         compiled,c     "list packages which have been custom compiled" \
         list,l         "list installed packages with their compilation status" \
         -- $*
+
+    if [[ $+no_abs = 0 && ! -d $ABS_DIR ]] ; then
+        warn "ABS directory is not available, reverting to downloading abs builds one at a time which is slower"
+        warn "Please install 'abs' and run it to sync your local abs mirror"
+        typeset -g no_abs
+        no_abs=1
+    fi
 
     if [[ $+uncompiled -eq 1 ]] ; then
         list_uncompiled
