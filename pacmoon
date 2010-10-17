@@ -3,7 +3,7 @@
 emulate zsh
 setopt warnCreateGlobal extendedGlob noFunctionArgZero nullGlob
 
-PACMOON_VERSION=0.6
+PACMOON_VERSION=0.7
 AUR_BASE=http://aur.archlinux.org/packages
 ABS_DIR=/var/abs
 ABS_RSYNC=rsync.archlinux.org::abs
@@ -101,7 +101,7 @@ build_pkg() {
         makepkg $mkpkg_args
     fi
 
-    [[ $? -eq 0 ]] || die "could not build $name from $repo"
+    [[ $? -eq 0 ]] || die "could not build $name"
 
     as_root pacman --noconfirm -U ${as_dep:+--asdeps} *.pkg.tar.* || \
         die "could not install package"
