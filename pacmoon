@@ -308,7 +308,7 @@ main() {
     else
         info "please wait, collecting packages to build"
         collect_pkgs $positionals
-        build_pkgs
+        [[ $+pretend = 0 ]] || build_pkgs
     fi
 }
 
