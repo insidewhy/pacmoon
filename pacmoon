@@ -181,6 +181,7 @@ collect_pkg() {
 
     typeset -a pkgData
     pkgData=( $(package-query -Qf "%1 %s %n" --query-type provides $name || \
+                package-query -Qif "%1 %s %n" $name || \
                 package-query -Sif "%1 %s %n" $name) )
 
     if [[ -z $pkgData ]] ; then
