@@ -290,6 +290,7 @@ collect_pkgs() {
 
 main() {
     jgetopt $0 "$PACMOON_VERSION (please enjoy your evening)" \
+        ':[packages]' \
         ask,a          "ask for confirmation before compiling" \
         pretend,p      "only print what would be done" \
         keep-going,k   "do not stop on error" \
