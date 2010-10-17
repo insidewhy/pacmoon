@@ -11,7 +11,7 @@ RSYNC_ARGS=(-mrtv --no-motd --no-p --no-o --no-g)
 autoload jgetopt colors
 colors
 
-pmoonHome="$XDG_CONFIG_HOME/pacmoon"
+pmoonHome="${XDG_CONFIG_HOME:-$HOME/.config}/pacmoon"
 logFile="$pmoonHome/log"
 mkdir -p $pmoonHome/pkg || die "could not mkdir $pmoonHome/pkg"
 
