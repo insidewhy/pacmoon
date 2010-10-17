@@ -3,7 +3,7 @@
 emulate zsh
 setopt warnCreateGlobal extendedGlob noFunctionArgZero nullGlob
 
-PACMOON_VERSION=0.5
+PACMOON_VERSION=0.6
 AUR_BASE=http://aur.archlinux.org/packages
 ABS_RSYNC=rsync.archlinux.org::abs
 RSYNC_ARGS=(-mrtv --no-motd --no-p --no-o --no-g)
@@ -154,7 +154,7 @@ collect_deps() {
             verbose "end dependencies of $name"
         fi
 
-        install_list+=$basename:$is_dep
+        install_list+=($basename $is_dep)
         popd
     fi
 }
@@ -219,9 +219,8 @@ build_collected() {
         return 0
     elif [[ $+ask -eq 1 ]] ; then
         echo "installing: "
-        for pkg in $install_list ; do
-            local as_dep=${pkg#*:}
-            info ${pkg%:*} ${as_dep:+"(dependency)"}
+        for pkg isdep in $install_list ; do
+            info $pkg ${isdep:+"(dependency)"}
         done
         echo -n "Continue installing [yN]? "
         read ans
@@ -230,8 +229,8 @@ build_collected() {
         fi
     fi
 
-    for pkg in $install_list ; do
-        build_pkg ${pkg%:*} ${pkg#*:}
+    for pkg isdep in $install_list ; do
+        build_pkg $pkg $isdep
     done
 }
 
