@@ -191,25 +191,35 @@ collect_pkg() {
     dep_status[$name]=1
 
     typeset -a pkgData
-    pkgData=( $(package-query -Qf "%1 %s %n" --query-type provides $name_v || \
-                package-query -Qif "%1 %s %n" $name_v || \
-                package-query -Sif "%1 %s %n" $name_v) )
+    local pq_fmt="%1 %s %n %v"
+    pkgData=( $(package-query -Qf $pq_fmt --query-type provides $name_v || \
+                package-query -Qif $pq_fmt $name_v || \
+                package-query -Sif $pq_fmt $name_v) )
 
     if [[ -z $pkgData ]] ; then
         # TODO: file might be in aur
-        pkgData=( $(package-query -Sf "%1 %s %n" --query-type provides $name) )
-        if [[ $#pkgData -ne 3 ]] ; then
-            if [[ $#pkgData -lt 3 ]] ; then
+        pkgData=( $(package-query -Sf $pq_fmt --query-type provides $name) )
+        if [[ $#pkgData -ne 4 ]] ; then
+            if [[ $#pkgData -lt 4 ]] ; then
                 error "could not find package $name_v"
             else
                 error "multiple packages provide $name_v"
-                for ignore repo pr_name in "${(@)pkgData}" ; do
-                    error "    $pr_name in $repo"
+                for ignore repo pr_name ver in "${(@)pkgData}" ; do
+                    error "    $pr_name-$ver in $repo"
                 done
                 error "please install one of these and run this script again"
             fi
             return 1
         fi
+    fi
+
+    # check if package conflicts with anything already installed
+    local conflict
+    conflict=$(package-query -Qf %n --query-type conflicts "$pkgData[3]=$pkgData[4]")
+    if [[ -n $conflict ]] ; then
+        verbose "$conflict conflicts with $pkgData[3]-$pkgData[4], installing $conflict"
+        collect_pkg $conflict $is_dep
+        return
     fi
 
     if [[ $name != $pkgData[3] ]] ; then
@@ -241,10 +251,6 @@ build_pkgs() {
         log_info "nothing to install"
         return 0
     fi
-
-    for pkg isdep in "${(@)install_list}" ; do
-        info $pkg ${split_pkgs[$pkg]:+"($split_pkgs[$pkg])"} ${isdep:+"(dependency)"}
-    done
 
     if [[ $+ask -eq 1 ]] ; then
         echo -n "Continue installing [yN]? "
@@ -312,6 +318,11 @@ main() {
     else
         info "please wait, collecting packages to build"
         collect_pkgs $positionals
+
+        for pkg isdep in "${(@)install_list}" ; do
+            info $pkg ${split_pkgs[$pkg]:+"($split_pkgs[$pkg])"} ${isdep:+"(dependency)"}
+        done
+
         [[ $+pretend -eq 0 ]] && build_pkgs
     fi
 }
