@@ -1,0 +1,57 @@
+!html
+head {
+    %title pacmoon - arch linux package compilation utility
+    link(rel=stylesheet, type=text/css, href=css/global.css)
+}
+
+!body
+
+%h1 pacmoon
+
+#links {
+    links:
+    %a(href=http://github.com/tuxjay/pacmoon) source
+    %a(href=https://sourceforge.net/projects/pacmoon/files/) download
+}
+
+%p {
+    pacmoon is a script for compiling arch linux packages using custom make flags. It keeps track of which files have been compiled so that in the event of compiled packages getting replaced with a binary (like during an upgrade process) then pacmoon can recompile only the necessary packages.
+}
+
+%h2 Running pacmoon
+%pre <<EOF
+    % pacmoon 0.7 (please enjoy your evening)
+    usage: ./pacmoon [arguments] [packages]
+      --ask, -a         ask for confirmation before compiling
+      --pretend, -p     only print what would be done
+      --keep-going, -k  do not stop on error
+      --verbose, -v     increase verbosity
+      --quiet, -q       hide output of compilation
+      --keep-temp, -T   keep temporary files
+      --no-abs, -A      do not use local abs mirror (slower)
+      --uncompiled, -u  list packages which have not been custom compiled
+      --compiled, -c    list packages which have been custom compiled
+      --list, -l        list installed packages with their compilation status
+      --help, -h        show this help message
+EOF
+
+%h2 Recompile all binary installed packages
+%pre <<EOF
+    # this also compiles dependencies necessary to build packages
+    % pacmoon
+EOF
+
+%h2 Compile packages listed on command line
+%pre <<EOF
+    % pacmoon zsh gcc
+EOF
+
+%h2 Installing
+
+%p pacmoon is in the Arch Linux AUR.
+
+%h2 Contributing
+
+%div Wanted: Bug reports, suggestions and art for the website.
+%div E-mail: pacmoon (@) chilon.net.
+%div { IRC Channel: #pacmoon on | %a(href=irc://irc.freenode.net/pacmoon) "irc.freenode.net" }
