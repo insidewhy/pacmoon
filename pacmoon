@@ -117,7 +117,7 @@ collect_deps() {
     local is_dep=$3
 
     if [[ $repo = local ]] ; then
-        verbose "adding package $name from AUR to install list"
+        warn "not supported: adding package $name from AUR to install list"
     else
         verbose "adding package $name from $repo to install list"
 
@@ -185,8 +185,19 @@ collect_pkg() {
 
     if [[ -z $pkgData ]] ; then
         # TODO: file might be in aur
-        error "could not find package $name"
-        return 1
+        pkgData=( $(package-query -Sf "%1 %s %n" --query-type provides $name) )
+        if [[ $#pkgData -ne 3 ]] ; then
+            if [[ $#pkgData -lt 3 ]] ; then
+                error "could not find package $name"
+            else
+                error "multiple packages provide $name"
+                for ignore repo pr_name in "${(@)pkgData}" ; do
+                    error "    $pr_name in $repo"
+                done
+                error "please install one of these and run this script again"
+            fi
+            return 1
+        fi
     fi
 
     if [[ $name != $pkgData[3] ]] ; then
@@ -213,7 +224,7 @@ collect_pkg() {
     dep_status[$name]=1
 }
 
-build_collected() {
+build_pkgs() {
     if [[ $#install_list -eq 0 ]] ; then
         log_info "nothing to install"
         return 0
@@ -245,7 +256,6 @@ collect_all() {
     else
         warn "last update time not found, checking all installed packages"
 
-        # TODO: only get requested
         for pkg in $(pacman -Qq) ; do
             collect_pkg $pkg
         done
@@ -282,7 +292,7 @@ main() {
     else
         info "please wait, collecting packages to build"
         collect_pkgs $positionals
-        build_collected
+        build_pkgs
     fi
 }
 
