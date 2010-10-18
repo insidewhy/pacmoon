@@ -75,7 +75,12 @@ pacman_output_field() {
 
 dbPath=$(pacman_output_field -v DB)
 typeset -A split_pkgs
+typeset -A requested_pkgs
 typeset -a install_list
+
+is_dep() {
+    [[ $+requested_pkgs[$1] -eq 0 ]] && ! pacman &>/dev/null -Qe $1
+}
 
 build_pkg() {
     local name=$1
@@ -91,10 +96,11 @@ build_pkg() {
         mkpkg_args=($mkpkg_args --pkg "$split_pkgs[$name]")
     fi
 
-    pacman &>/dev/null -Qd $pkg
-    local as_dep=$?
+    if is_dep $pkg ; then
+        local as_dep
+    fi
 
-    log_info "build ${as_dep:+dependency }package $name ($mkpkg_args)"
+    log_info "build ${as_dep+dependency }package $name ($mkpkg_args)"
 
     rm -f *.pkg.tar.*
     if [[ $+quiet -eq 1 ]] ; then
@@ -105,7 +111,7 @@ build_pkg() {
 
     [[ $? -eq 0 ]] || die "could not build $name"
 
-    as_root pacman --noconfirm -U ${as_dep:+--asdeps} *.pkg.tar.* || \
+    as_root pacman --noconfirm -U ${as_dep+--asdeps} *.pkg.tar.* || \
         die "could not install package"
 
     # record the date the package was dep_status
@@ -284,7 +290,10 @@ collect_pkgs() {
     if [[ $# = 0 ]] ; then
         collect_all
     else
-        for pkg in $* ; do collect_pkg $pkg; done
+        for pkg in $* ; do
+            requested_pkgs[$pkg]=1
+            collect_pkg $pkg
+        done
     fi
 }
 
@@ -323,9 +332,7 @@ main() {
         local sfx
         for pkg in "${(@)install_list}" ; do
             sfx=
-            if pacman &>/dev/null -Qd $pkg ; then
-                sfx="(dependency)"
-            fi
+            is_dep $pkg && sfx="(dependency)"
             info $pkg ${split_pkgs[$pkg]:+"($split_pkgs[$pkg])"} $sfx
         done
 
