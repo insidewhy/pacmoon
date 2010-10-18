@@ -53,8 +53,7 @@ EOF
      * zsh
      * vim
 
-    # nasm isn't in the install list as it has already been compiled from
-    # source
+    # nasm isn't in the install list as it has already been compiled from source
 EOF
 
 %h2 Installing
