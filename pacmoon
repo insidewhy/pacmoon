@@ -170,12 +170,12 @@ collect_pkg_data() {
                 die "rsync connection died, could not retrieve $basename"
        fi
 
-        typeset -a deps
-        deps=( $(bash -c 'source /etc/makepkg.conf; source PKGBUILD && echo ${makedepends[@]}') )
+        typeset -a make_deps
+        make_deps=( $(bash -c 'source /etc/makepkg.conf; source PKGBUILD && echo ${makedepends[@]}') )
 
-        if [[ $#deps > 0 ]] ; then
+        if [[ $#make_deps > 0 ]] ; then
             verbose "begin dependencies of $name"
-            for dep in $deps ; do
+            for dep in $make_deps ; do
                 collect_pkg $dep
             done
             verbose "end dependencies of $name"
@@ -218,7 +218,14 @@ resolve_name() {
         fi
     fi
 
-    echo "$pkgData"
+    # check if package conflicts with anything already installed
+    local conflict
+    conflict=( $(package-query -Qf $pq_fmt --query-type conflicts "$pkgData[3]=$pkgData[4]") )
+    if [[ -n $conflict ]] ; then
+        echo "$conflict"
+    else
+        echo "$pkgData"
+    fi
 }
 
 collect_pkg() {
@@ -240,15 +247,6 @@ collect_pkg() {
     typeset -a pkgData
     pkgData=( $(resolve_name $name $name_v) )
     [[ $? -ne 0 ]] && return
-
-    # check if package conflicts with anything already installed
-    local conflict
-    conflict=$(package-query -Qf %n --query-type conflicts "$pkgData[3]=$pkgData[4]")
-    if [[ -n $conflict ]] ; then
-        verbose "$conflict conflicts with $pkgData[3]-$pkgData[4], installing $conflict"
-        collect_pkg $conflict
-        return
-    fi
 
     if [[ $name != $pkgData[3] ]] ; then
         name=$pkgData[3]
