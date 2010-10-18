@@ -185,26 +185,12 @@ as_root() {
     if [[ $UID -eq 0 ]] ; then $* ; else sudo $* ; fi
 }
 
-collect_pkg() {
-    local name_v=$1
+resolve_name() {
+    local name=$1
+    local name_v=$2
 
-    local name=$(echo $name_v | sed 's/[<>=].*$//')
-
-    # don't check the same package twice
-    if [[ $+dep_status[$name] -eq 1 ]] ; then
-        if [[ $dep_status[$name] -eq 2 ]] ; then
-            log_info "installing binary package $name due to dependency cycle"
-            as_root pacman --needed --noconfirm -S $name || die \
-                "could not get binary package for recursive dependency $name"
-            dep_status[$name]=1
-        fi
-        return 0
-    fi
-
-    dep_status[$name]=1
-
-    typeset -a pkgData
     local pq_fmt="%1 %s %n %v"
+    typeset -a pkgData
     pkgData=( $(package-query -Qf $pq_fmt --query-type provides $name_v || \
                 package-query -Qif $pq_fmt $name_v || \
                 package-query -Sif $pq_fmt $name_v) )
@@ -226,6 +212,31 @@ collect_pkg() {
             return 1
         fi
     fi
+
+    echo "$pkgData"
+}
+
+collect_pkg() {
+    local name_v=$1
+
+    local name=$(echo $name_v | sed 's/[<>=].*$//')
+
+    # don't check the same package twice
+    if [[ $+dep_status[$name] -eq 1 ]] ; then
+        if [[ $dep_status[$name] -eq 2 ]] ; then
+            log_info "installing binary package $name due to dependency cycle"
+            as_root pacman --needed --noconfirm -S $name || die \
+                "could not get binary package for recursive dependency $name"
+            dep_status[$name]=1
+        fi
+        return 0
+    fi
+
+    dep_status[$name]=1
+
+    typeset -a pkgData
+    pkgData=( $(resolve_name $name $name_v) )
+    [[ $? -ne 0 ]] && return
 
     # check if package conflicts with anything already installed
     local conflict
