@@ -228,21 +228,25 @@ resolve_name() {
     fi
 }
 
+processing_pkg() {
+    if [[ $+dep_status[$1] -eq 1 ]] ; then
+        if [[ $dep_status[$1] -eq 2 ]] ; then
+            pacman &>/dev/null -Q $1 || cyclic_deps+=$1
+            dep_status[$1]=1
+        fi
+        return 1
+    fi
+
+    dep_status[$1]=1
+    return 0
+}
+
 collect_pkg() {
     local name_v=$1
-
     local name=$(echo $name_v | sed 's/[<>=].*$//')
 
     # don't check the same package twice
-    if [[ $+dep_status[$name] -eq 1 ]] ; then
-        if [[ $dep_status[$name] -eq 2 ]] ; then
-            pacman &>/dev/null -Q $name || cyclic_deps+=$name
-            dep_status[$name]=1
-        fi
-        return 0
-    fi
-
-    dep_status[$name]=1
+    processing_pkg $name || return 0
 
     typeset -a pkgData
     pkgData=( $(resolve_name $name $name_v) )
