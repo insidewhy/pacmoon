@@ -121,7 +121,7 @@ build_pkg() {
     popd
 }
 
-collect_deps() {
+collect_pkg_data() {
     local name=$1
     local repo=$2
 
@@ -134,14 +134,20 @@ collect_deps() {
                ${dbPath}/sync/$repo/$name-[0-9]*/desc | tail -n 1)
 
         if [[ -n $basename && $basename != $name ]] ; then
+
             if [[ $+split_pkgs[$basename] -eq 1 ]] ; then
                 split_pkgs[$basename]+=" $name"
                 return
             else
                 split_pkgs[$basename]=$name
             fi
+
+            # already got here through another package in split
+            [[ $+dep_status[$basename] -eq 1 ]]  && return
         else
-            basename=$name
+            local basename=$name
+
+            # already got here through split package
             [[ $+split_pkgs[$basename] -eq 1 ]] && return
         fi
 
@@ -249,7 +255,7 @@ collect_pkg() {
     fi
 
     dep_status[$name]=2
-    collect_deps $name $pkgData[2]
+    collect_pkg_data $name $pkgData[2]
     dep_status[$name]=1
 }
 
