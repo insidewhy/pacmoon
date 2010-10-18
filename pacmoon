@@ -111,6 +111,7 @@ build_pkg() {
 
     [[ $? -eq 0 ]] || die "could not build $name"
 
+    # TODO: test split packages one by one
     as_root pacman --noconfirm -U ${as_dep+--asdeps} *.pkg.tar.* || \
         die "could not install package"
 
