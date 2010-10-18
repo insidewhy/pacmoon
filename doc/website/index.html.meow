@@ -20,16 +20,17 @@ head {
 
 %h2 Running pacmoon
 %pre <<EOF
-    % pacmoon 0.7 (please enjoy your evening)
+    pacmoon 0.8 (please enjoy your evening)
     usage: ./pacmoon [arguments] [packages]
       --ask, -a         ask for confirmation before compiling
       --pretend, -p     only print what would be done
       --keep-going, -k  do not stop on error
       --verbose, -v     increase verbosity
       --quiet, -q       hide output of compilation
-      --keep-temp, -T   keep temporary files
+      --keep-build, -b  keep temporary build files
       --no-abs, -A      do not use local abs mirror (slower)
       --uncompiled, -u  list packages which have not been custom compiled
+      --make-deps, -m   compile make dependencies rather than using binaries
       --compiled, -c    list packages which have been custom compiled
       --list, -l        list installed packages with their compilation status
       --help, -h        show this help message
@@ -37,7 +38,7 @@ EOF
 
 %h2 Recompile all binary installed packages
 %pre <<EOF
-    # this also compiles dependencies necessary to build packages
+    # this also installs dependencies necessary to build packages
     % pacmoon
 EOF
 
