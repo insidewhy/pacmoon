@@ -229,7 +229,7 @@ collect_pkg() {
     # don't check the same package twice
     if [[ $+dep_status[$name] -eq 1 ]] ; then
         if [[ $dep_status[$name] -eq 2 ]] ; then
-            cyclic_deps+=$name
+            pacman &>/dev/null -Q $name || cyclic_deps+=$name
             dep_status[$name]=1
         fi
         return 0
