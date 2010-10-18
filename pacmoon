@@ -79,7 +79,6 @@ typeset -a install_list
 
 build_pkg() {
     local name=$1
-    local as_dep=$2
 
     pushd "$pmoonHome/tmp/$name" || \
         die "could not cd to $pmoonHome/tmp/$name"
@@ -91,6 +90,9 @@ build_pkg() {
         # fullname only set for split packages
         mkpkg_args=($mkpkg_args --pkg "$split_pkgs[$name]")
     fi
+
+    pacman &>/dev/null -Qd $pkg
+    local as_dep=$?
 
     log_info "build ${as_dep:+dependency }package $name ($mkpkg_args)"
 
@@ -115,7 +117,6 @@ build_pkg() {
 collect_deps() {
     local name=$1
     local repo=$2
-    local is_dep=$3
 
     if [[ $repo = local ]] ; then
         warn "unsupported: AUR package $name"
@@ -157,12 +158,12 @@ collect_deps() {
         if [[ $#deps > 0 ]] ; then
             verbose "begin dependencies of $name"
             for dep in $deps ; do
-                collect_pkg $dep 1
+                collect_pkg $dep
             done
             verbose "end dependencies of $name"
         fi
 
-        install_list+=($basename "$is_dep")
+        install_list+=$basename
         popd
     fi
 }
@@ -173,7 +174,6 @@ as_root() {
 
 collect_pkg() {
     local name_v=$1
-    local is_dep=$2
 
     local name=$(echo $name_v | sed 's/[<>=].*$//')
 
@@ -218,7 +218,7 @@ collect_pkg() {
     conflict=$(package-query -Qf %n --query-type conflicts "$pkgData[3]=$pkgData[4]")
     if [[ -n $conflict ]] ; then
         verbose "$conflict conflicts with $pkgData[3]-$pkgData[4], installing $conflict"
-        collect_pkg $conflict $is_dep
+        collect_pkg $conflict
         return
     fi
 
@@ -242,7 +242,7 @@ collect_pkg() {
     fi
 
     dep_status[$name]=2
-    collect_deps $name $pkgData[2] $is_dep
+    collect_deps $name $pkgData[2]
     dep_status[$name]=1
 }
 
@@ -260,8 +260,8 @@ build_pkgs() {
         fi
     fi
 
-    for pkg isdep in "${(@)install_list}" ; do
-        build_pkg $pkg $isdep
+    for pkg in "${(@)install_list}" ; do
+        build_pkg $pkg
     done
 }
 
@@ -320,8 +320,13 @@ main() {
         info "please wait, collecting packages to build"
         collect_pkgs $positionals
 
-        for pkg isdep in "${(@)install_list}" ; do
-            info $pkg ${split_pkgs[$pkg]:+"($split_pkgs[$pkg])"} ${isdep:+"(dependency)"}
+        local sfx
+        for pkg in "${(@)install_list}" ; do
+            sfx=
+            if pacman &>/dev/null -Qd $pkg ; then
+                sfx="(dependency)"
+            fi
+            info $pkg ${split_pkgs[$pkg]:+"($split_pkgs[$pkg])"} $sfx
         done
 
         [[ $+pretend -eq 0 ]] && build_pkgs
