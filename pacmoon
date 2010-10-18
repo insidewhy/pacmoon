@@ -290,11 +290,6 @@ collect_pkg() {
 }
 
 build_pkgs() {
-    for pkg in $cyclic_deps ; do
-        as_root pacman --needed --noconfirm -S $pkg || die \
-            "could not get binary package for recursive dependency $pkg"
-    done
-
     if [[ $#install_pkgs -eq 0 ]] ; then
         log_info "nothing to install"
         return 0
@@ -307,6 +302,15 @@ build_pkgs() {
             exit 1
         fi
     fi
+
+    for pkg in $cyclic_deps ; do
+        as_root pacman --asdeps --needed --noconfirm -S $pkg || die \
+            "could not get binary package for recursive dependency $pkg"
+    done
+
+    for pkg in ${(k)makedep_pkgs} ; do
+        as_root pacman --asdeps --needed --noconfirm -S $pkg
+    done
 
     for pkg in "${(@)install_pkgs}" ; do
         build_pkg $pkg
