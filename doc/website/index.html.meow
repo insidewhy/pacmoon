@@ -44,7 +44,17 @@ EOF
 
 %h2 Compile packages listed on command line
 %pre <<EOF
-    % pacmoon zsh gcc
+    % pacmoon zsh gcc nasm
+     * please wait, collecting packages to build
+    binaries installed due to make dependencies:
+     * ruby
+     * mercurial
+    pacmoon install list:
+     * zsh
+     * vim
+
+    # nasm isn't in the install list as it has already been compiled from
+    # source
 EOF
 
 %h2 Installing
