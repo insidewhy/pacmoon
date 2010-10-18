@@ -3,7 +3,7 @@
 emulate zsh
 setopt warnCreateGlobal extendedGlob noFunctionArgZero nullGlob
 
-PACMOON_VERSION=0.7
+PACMOON_VERSION=0.7.1
 AUR_BASE=http://aur.archlinux.org/packages
 ABS_DIR=/var/abs
 ABS_RSYNC=rsync.archlinux.org::abs
@@ -210,10 +210,11 @@ collect_pkg() {
                 package-query -Sif $pq_fmt $name_v) )
 
     if [[ -z $pkgData ]] ; then
-        # TODO: file might be in aur
         pkgData=( $(package-query -Sf $pq_fmt --query-type provides $name) )
+
         if [[ $#pkgData -ne 4 ]] ; then
             if [[ $#pkgData -lt 4 ]] ; then
+                # TODO: check aur
                 error "could not find package $name_v"
             else
                 error "multiple packages provide $name_v"
