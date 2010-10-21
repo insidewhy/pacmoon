@@ -18,8 +18,28 @@ mkdir -p $pmoonHome/pkg || die "could not mkdir $pmoonHome/pkg"
 
 typeset -A dep_status
 
+c_ver=$fg[green]
+c_reset=$fg_no_bold[default]
+
 info() {
-    echo " $fg_bold[green]*$fg_no_bold[default] $*"
+    echo " $fg[green]*$c_reset $*"
+}
+
+print_pkg() {
+    info $1 "[$c_ver$2$c_reset]"
+}
+
+print_inst_pkg() {
+    echo -n " $fg[green]*$c_reset" $1 "[$c_ver$2$c_reset]"
+
+    # TODO: handle split packages differently
+    if [[ $+split_pkgs[$1] -eq 1 ]] ; then
+        echo " ($split_pkgs[$pkg])"
+    elif is_dep $pkg ; then
+        echo " (dependency)"
+    else
+        echo ""
+    fi
 }
 
 log_info() {
@@ -28,25 +48,25 @@ log_info() {
 }
 
 warn() {
-    echo " $fg_bold[yellow]*$fg_no_bold[default] $*"
+    echo " $fg_bold[yellow]*$c_reset $*"
     echo warn: $* >> $logFile
 }
 
 die() {
-    echo " $fg_bold[red]*$fg_no_bold[default] $*"
+    echo " $fg_bold[red]*$c_reset $*"
     echo fatal: $* >> $logFile
     exit 1
 }
 
 error() {
-    echo " $fg_bold[red]*$fg_no_bold[default] $*"
+    echo " $fg_bold[red]*$c_reset $*"
     echo error: $* >> $logFile
     [[ $+keep_going -eq 1 ]] || exit 1
 }
 
 verbose() {
     if [[ $+verbose -eq 1 ]] ; then
-        echo " $fg_bold[cyan]*$fg_no_bold[default] $*"
+        echo " $fg_bold[cyan]*$c_reset $*"
     fi
 }
 
@@ -124,6 +144,7 @@ build_pkg() {
     popd
 }
 
+# printers (<install date> <sync repo> <name> <version>)
 resolve_name() {
     local name=$1
     local name_v=$2
@@ -223,17 +244,17 @@ collect_pkg_data() {
             else
                 typeset -a pkgData
                 for dep in $mk_deps ; do
-                    # TODO: store versions with mk_deps
                     pkgData=( $(resolve_name $dep $dep) )
                     if [[ $? -eq 0 ]] && ! pacman &>/dev/null -Q $pkgData[3] ; then
-                        makedep_pkgs[$pkgData[3]]=1
+                        makedep_pkgs[$pkgData[3]]=$pkgData[4]
                     fi
                 done
             fi
             verbose "end dependencies of $name"
         fi
 
-        install_pkgs+=$basename
+        # TODO: store previous version here also
+        install_pkgs+=($basename $pkgData[4])
         popd
     fi
 }
@@ -276,7 +297,7 @@ collect_pkg() {
         verbose "new package $name"
     elif [ -f $pmoonHome/pkg/$name ] ; then
         if [[ $pkgData[1] -le $(cat $pmoonHome/pkg/$name) ]] ; then
-            resolved_pkgs+=$name
+            resolved_pkgs+=($name $pkgData[4])
             verbose "package $name up to date and compiled"
             return
         else
@@ -314,7 +335,7 @@ build_pkgs() {
         as_root pacman --asdeps --needed --noconfirm -S $pkg
     done
 
-    for pkg in "${(@)install_pkgs}" ; do
+    for pkg ver in "${(@)install_pkgs}" ; do
         build_pkg $pkg
     done
 }
@@ -380,8 +401,8 @@ main() {
 
         if [[ $#resolved_pkgs > 0 ]] ; then
             echo -e "\nskipping already compiled packages:"
-            for pkg in $resolved_pkgs ; do
-                info $pkg
+            for pkg ver in $resolved_pkgs ; do
+                print_pkg $pkg $ver
             done
         fi
 
@@ -395,16 +416,14 @@ main() {
         if [[ $#makedep_pkgs > 0 ]] ; then
             echo -e "\nbinaries installed due to make dependencies:"
             for pkg in ${(k)makedep_pkgs} ; do
-                info $pkg
+                print_pkg $pkg $makedep_pkgs[$pkg]
             done
         fi
 
         echo -e "\npacmoon install list:"
         local sfx
-        for pkg in "${(@)install_pkgs}" ; do
-            sfx=
-            is_dep $pkg && sfx="(dependency)"
-            info $pkg ${split_pkgs[$pkg]:+"($split_pkgs[$pkg])"} $sfx
+        for pkg ver in $install_pkgs ; do
+            print_inst_pkg $pkg $ver
         done
 
         [[ $+pretend -eq 0 ]] && build_pkgs
