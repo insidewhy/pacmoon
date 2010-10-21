@@ -3,7 +3,7 @@
 emulate zsh
 setopt warnCreateGlobal extendedGlob noFunctionArgZero nullGlob
 
-PACMOON_VERSION=0.8
+PACMOON_VERSION=0.8.1
 AUR_BASE=http://aur.archlinux.org/packages
 ABS_DIR=/var/abs
 ABS_RSYNC=rsync.archlinux.org::abs
@@ -79,6 +79,7 @@ typeset -A requested_pkgs
 typeset -a install_pkgs
 typeset -A makedep_pkgs
 typeset -a cyclic_deps
+typeset -a resolved_pkgs
 
 is_dep() {
     [[ $+requested_pkgs[$1] -eq 0 ]] && ! pacman &>/dev/null -Qe $1
@@ -208,7 +209,7 @@ collect_pkg_data() {
             rsync &>/dev/null $RSYNC_ARGS "$ABS_RSYNC/$arch/$repo/$basename/" .
             [[ $? -ne 0 ]] && \
                 die "rsync connection died, could not retrieve $basename"
-       fi
+        fi
 
         typeset -a mk_deps
         mk_deps=( $(bash -c 'source /etc/makepkg.conf; source PKGBUILD && echo ${makedepends[@]}') )
@@ -275,6 +276,7 @@ collect_pkg() {
         verbose "new package $name"
     elif [ -f $pmoonHome/pkg/$name ] ; then
         if [[ $pkgData[1] -le $(cat $pmoonHome/pkg/$name) ]] ; then
+            resolved_pkgs+=$name
             verbose "package $name up to date and compiled"
             return
         else
@@ -376,21 +378,28 @@ main() {
         info "please wait, collecting packages to build"
         collect_pkgs $positionals
 
+        if [[ $#resolved_pkgs > 0 ]] ; then
+            echo -e "\nskipping already compiled packages:"
+            for pkg in $resolved_pkgs ; do
+                info $pkg
+            done
+        fi
+
         if [[ $#cyclic_deps > 0 ]] ; then
-            echo "binaries installed due to cyclic dependencies:"
+            echo -e "\nbinaries installed due to cyclic dependencies:"
             for pkg in $cyclic_deps ; do
                 info $pkg
             done
         fi
 
         if [[ $#makedep_pkgs > 0 ]] ; then
-            echo "binaries installed due to make dependencies:"
+            echo -e "\nbinaries installed due to make dependencies:"
             for pkg in ${(k)makedep_pkgs} ; do
                 info $pkg
             done
         fi
 
-        echo "pacmoon install list:"
+        echo -e "\npacmoon install list:"
         local sfx
         for pkg in "${(@)install_pkgs}" ; do
             sfx=

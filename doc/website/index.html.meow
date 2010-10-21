@@ -20,7 +20,7 @@ head {
 
 %h2 Running pacmoon
 %pre <<EOF
-    pacmoon 0.8 (please enjoy your evening)
+    pacmoon 0.8.1 (please enjoy your evening)
     usage: ./pacmoon [arguments] [packages]
       --ask, -a         ask for confirmation before compiling
       --pretend, -p     only print what would be done
@@ -36,25 +36,28 @@ head {
       --help, -h        show this help message
 EOF
 
-%h2 Recompile all binary installed packages
-%pre <<EOF
-    # this also installs dependencies necessary to build packages
-    % pacmoon
-EOF
-
 %h2 Compile packages listed on command line
 %pre <<EOF
-    % pacmoon zsh gcc nasm
+    % ./pacmoon -p vim nasm zsh
      * please wait, collecting packages to build
+
+    skipping already compiled packages:
+     * zsh
+
     binaries installed due to make dependencies:
      * ruby
-     * mercurial
-    pacmoon install list:
-     * zsh
-     * vim
 
-    # nasm isn't in the install list as pacmoon determined the version installed
-    # has already been compiled from source
+    pacmoon install list:
+     * vim
+     * nasm
+EOF
+
+%h2 Recompile all binary installed packages
+%pre <<EOF
+    # this also installs dependencies necessary to build packages.
+    # -a causes pacmoon to display what it will do and prompt whether
+    # to continue.
+    % pacmoon -a
 EOF
 
 %h2 Installing
