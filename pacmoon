@@ -32,8 +32,9 @@ print_pkg() {
 print_inst_pkg() {
     echo -n " $fg[green]*$c_reset" $1 "[$c_ver$2$c_reset]"
 
-    # TODO: handle split packages differently
     if [[ $+split_pkgs[$1] -eq 1 ]] ; then
+        # TODO: print whether each split package is going to be installed
+        #       as a dependency separately
         echo " ($split_pkgs[$pkg])"
     elif is_dep $pkg ; then
         echo " (dependency)"
@@ -100,6 +101,7 @@ typeset -a install_pkgs
 typeset -A makedep_pkgs
 typeset -a cyclic_deps
 typeset -a resolved_pkgs
+typeset -a abs_failed
 
 is_dep() {
     [[ $+requested_pkgs[$1] -eq 0 ]] && ! pacman &>/dev/null -Qe $1
@@ -149,7 +151,7 @@ resolve_name() {
     local name=$1
     local name_v=$2
 
-    local pq_fmt="%1 %s %n %v"
+    local pq_fmt="%1 %s %n %v %l"
     typeset -a pkgData
     pkgData=( $(package-query -Qf $pq_fmt --query-type provides $name_v || \
                 package-query -Qif $pq_fmt $name_v || \
@@ -187,6 +189,7 @@ resolve_name() {
 collect_pkg_data() {
     local name=$1
     local repo=$2
+    local ver=$3
 
     if [[ $repo = local ]] ; then
         warn "unsupported: AUR package $name"
@@ -223,13 +226,20 @@ collect_pkg_data() {
         local arch=$(package-query -Sif %a $repo/$basename)
         local use_abs=0
         if [[ $+no_abs -eq 0 ]] ; then
-            cp -r $ABS_DIR/$repo/$basename/* . && use_abs=1
+            if cp &>/dev/null -r $ABS_DIR/$repo/$basename/* . ; then
+                use_abs=1
+            else
+                warn "could not get $basename from local abs, falling back to rsync"
+            fi
         fi
 
         if [[ $use_abs -eq 0 ]] ; then
             rsync &>/dev/null $RSYNC_ARGS "$ABS_RSYNC/$arch/$repo/$basename/" .
-            [[ $? -ne 0 ]] && \
-                die "rsync connection died, could not retrieve $basename"
+            if [[ $? -ne 0 ]] ; then
+                warn "could not retrieve $basename-$ver from abs rsync"
+                abs_failed+=($basename $ver)
+                return 1
+            fi
         fi
 
         typeset -a mk_deps
@@ -308,7 +318,7 @@ collect_pkg() {
     fi
 
     dep_status[$name]=2
-    collect_pkg_data $name $pkgData[2]
+    collect_pkg_data $name $pkgData[2] $pkgData[4]
     dep_status[$name]=1
 }
 
@@ -398,6 +408,13 @@ main() {
     else
         info "please wait, collecting packages to build"
         collect_pkgs $positionals
+
+        if [[ $#abs_failed > 0 ]] ; then
+            echo -e "\nskipping package that could not be retrieved from abs:"
+            for pkg ver in $abs_failed ; do
+                print_pkg $pkg $ver
+            done
+        fi
 
         if [[ $#resolved_pkgs > 0 ]] ; then
             echo -e "\nskipping already compiled packages:"
