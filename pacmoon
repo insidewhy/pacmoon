@@ -427,7 +427,7 @@ main() {
         if [[ $#abs_badv > 0 ]] ; then
             echo -e "\nskipping $[$#abs_badv / 3] packages that are at incorrect version in abs:"
             for pkg abs_ver ver in $abs_badv ; do
-                info $pkg "[$c_ver$abs_ver$c_rst != $c_ver$ver$c_rst]"
+                info $pkg "[abs version: $c_ver$abs_ver$c_rst != $c_ver$ver$c_rst]"
             done
         fi
 
