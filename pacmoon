@@ -3,7 +3,7 @@
 emulate zsh
 setopt warnCreateGlobal extendedGlob noFunctionArgZero nullGlob
 
-PACMOON_VERSION=0.8.2
+PACMOON_VERSION=0.8.3
 AUR_BASE=http://aur.archlinux.org/packages
 ABS_DIR=/var/abs
 ABS_RSYNC=rsync.archlinux.org::abs
@@ -19,18 +19,18 @@ mkdir -p $pmoonHome/pkg || die "could not mkdir $pmoonHome/pkg"
 typeset -A dep_status
 
 c_ver=$fg[green]
-c_reset=$fg_no_bold[default]
+c_rst=$fg_no_bold[default]
 
 info() {
-    echo " $fg[green]*$c_reset $*"
+    echo " $fg[green]*$c_rst $*"
 }
 
 print_pkg() {
-    info $1 "[$c_ver$2$c_reset]"
+    info $1 "[$c_ver$2$c_rst]"
 }
 
 print_inst_pkg() {
-    echo -n " $fg[green]*$c_reset" $1 "[$c_ver$2$c_reset]"
+    echo -n " $fg[green]*$c_rst" $1 "[$c_ver$2$c_rst]"
 
     if [[ $+split_pkgs[$1] -eq 1 ]] ; then
         # TODO: print whether each split package is going to be installed
@@ -49,25 +49,25 @@ log_info() {
 }
 
 warn() {
-    echo " $fg_bold[yellow]*$c_reset $*"
+    echo " $fg_bold[yellow]*$c_rst $*"
     echo warn: $* >> $logFile
 }
 
 die() {
-    echo " $fg_bold[red]*$c_reset $*"
+    echo " $fg_bold[red]*$c_rst $*"
     echo fatal: $* >> $logFile
     exit 1
 }
 
 error() {
-    echo " $fg_bold[red]*$c_reset $*"
+    echo " $fg_bold[red]*$c_rst $*"
     echo error: $* >> $logFile
     [[ $+keep_going -eq 1 ]] || exit 1
 }
 
 verbose() {
     if [[ $+verbose -eq 1 ]] ; then
-        echo " $fg_bold[cyan]*$c_reset $*"
+        echo " $fg_bold[cyan]*$c_rst $*"
     fi
 }
 
@@ -82,7 +82,6 @@ list_compiled() {
 list_pkgs() {
     error "listing packages not supported yet"
 }
-
 
 pushd_build_dir() {
     local build_dir="$pmoonHome/tmp/$1"
@@ -102,6 +101,7 @@ typeset -A makedep_pkgs
 typeset -a cyclic_deps
 typeset -a resolved_pkgs
 typeset -a abs_failed
+typeset -a abs_badv
 
 is_dep() {
     [[ $+requested_pkgs[$1] -eq 0 ]] && ! pacman &>/dev/null -Qe $1
@@ -146,7 +146,7 @@ build_pkg() {
     popd
 }
 
-# printers (<install date> <sync repo> <name> <version>)
+# echos: <install date> <sync repo> <name> <version> <installed version>
 resolve_name() {
     local name=$1
     local name_v=$2
@@ -243,9 +243,17 @@ collect_pkg_data() {
         fi
 
         typeset -a mk_deps
-        mk_deps=( $(bash -c 'source /etc/makepkg.conf; source PKGBUILD && echo ${makedepends[@]}') )
+        mk_deps=( $(bash -c \
+            '. /etc/makepkg.conf; . PKGBUILD && echo $pkgver-$pkgrel ${makedepends[@]}') )
 
-        if [[ $#mk_deps > 0 ]] ; then
+        local abs_ver=$mk_deps[1]
+        if [[ $abs_ver != $ver ]] ; then
+            abs_badv+=($basename $abs_ver $ver)
+            return 1
+        fi
+
+        shift mk_deps
+        if [[ $#mk_deps > 1 ]] ; then
             verbose "begin dependencies of $name"
             if [[ $+make_deps -eq 1 ]] ; then
                 for dep in $mk_deps ; do
@@ -406,32 +414,39 @@ main() {
     elif [[ $+list -eq 1 ]] ; then
         list_pkgs
     else
-        info "please wait, collecting packages to build"
+        echo "please wait, collecting packages to build"
         collect_pkgs $positionals
 
         if [[ $#abs_failed > 0 ]] ; then
-            echo -e "\nskipping package that could not be retrieved from abs:"
+            echo -e "\nskipping $[$#abs_failed / 2] packages that could not be retrieved from abs:"
             for pkg ver in $abs_failed ; do
                 print_pkg $pkg $ver
             done
         fi
 
+        if [[ $#abs_badv > 0 ]] ; then
+            echo -e "\nskipping $[$#abs_badv / 3] packages that are at incorrect version in abs:"
+            for pkg abs_ver ver in $abs_badv ; do
+                info $pkg "[$c_ver$abs_ver$c_rst != $c_ver$ver$c_rst]"
+            done
+        fi
+
         if [[ $#resolved_pkgs > 0 ]] ; then
-            echo -e "\nskipping already compiled packages:"
+            echo -e "\nskipping $[$#resolved_pkgs / 2] already compiled packages:"
             for pkg ver in $resolved_pkgs ; do
                 print_pkg $pkg $ver
             done
         fi
 
         if [[ $#cyclic_deps > 0 ]] ; then
-            echo -e "\nbinaries installed due to cyclic dependencies:"
+            echo -e "\ninstalling $#cyclic_deps packages due to cyclic dependencies:"
             for pkg in $cyclic_deps ; do
                 info $pkg
             done
         fi
 
         if [[ $#makedep_pkgs > 0 ]] ; then
-            echo -e "\nbinaries installed due to make dependencies:"
+            echo -e "\ninstalling $#makedep_pkgs packages due to make dependencies:"
             for pkg in ${(k)makedep_pkgs} ; do
                 print_pkg $pkg $makedep_pkgs[$pkg]
             done
@@ -442,6 +457,7 @@ main() {
         for pkg ver in $install_pkgs ; do
             print_inst_pkg $pkg $ver
         done
+        echo -e "\n$[$#install_pkgs / 2] packages will be compiled\n"
 
         [[ $+pretend -eq 0 ]] && build_pkgs
     fi
